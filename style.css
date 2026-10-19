@@ -200,6 +200,7 @@ input::placeholder { color: #b6bece; }
 #top-card {
   background: linear-gradient(135deg, #fff7e6, #fff);
   border: 1px solid #ffe1a8; font-size: 14px;
+  border-radius: 10px; padding: 10px 12px; margin-top: 10px;
 }
 
 /* ---------- 空状态 ---------- */
@@ -245,3 +246,30 @@ input::placeholder { color: #b6bece; }
   max-width: 86vw; overflow: hidden; text-overflow: ellipsis;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- 价格对比 ---------- */
+.latest-price { font-weight: 700; color: var(--primary); font-size: 18px; white-space: nowrap; }
+.price-list { margin: 8px 0 4px; padding: 0; list-style: none; }
+.price-list li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0; border-top: 1px dashed var(--line); font-size: 14px;
+}
+.price-list li .d { color: var(--muted); font-size: 13px; }
+
+/* ---------- 安装横幅 ---------- */
+.install-banner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 40;
+  width: calc(100% - 24px); max-width: 536px;
+  background: #fff; border-radius: 14px; box-shadow: 0 6px 24px rgba(29, 36, 51, .18);
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-size: 13.5px;
+}
+.install-banner span { flex: 1; }
+.ghost-x { border: none; background: #eef1f8; color: var(--muted); }
+
+/* ---------- 安装说明列表 ---------- */
+.guide-list { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; }
+.guide-list li { margin-bottom: 6px; }
+
+/* 4 个汇总小方块，缩小字号以免溢出 */
+.summary .tile .num { font-size: 12.5px; }
