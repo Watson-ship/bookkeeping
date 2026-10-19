@@ -246,7 +246,7 @@ $('#item-form').addEventListener('submit', (e) => {
       id: uid(), name, category, price, quantity: qty, totalAmount: total,
       usageDays, startDate,
       /* 登记价作为价格对比的第一个记录 */
-      priceHistory: [{ date: startDate || todayStr(), price: price }],
+      priceHistory: [{ date: startDate || todayStr(), price: total }],
       createdAt: Date.now()
     });
     toast('已登记：' + name);
@@ -302,18 +302,20 @@ function editItem(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-/* 计算剩余使用天数 */
+/* 计算剩余使用天数（连续时间，进度随时间动态变化） */
 function remainingOf(it) {
   if (!(it.usageDays > 0)) return null;
   const start = it.startDate || toDateStr(new Date(it.createdAt));
-  const elapsed = Math.max(0, diffDays(start, todayStr()));
-  const remain = it.usageDays - elapsed;
-  const pct = clamp((elapsed / it.usageDays) * 100, 0, 100);
+  const startMs = parseDate(start).getTime();
+  const elapsedDays = Math.max(0, (Date.now() - startMs) / 86400000);
+  const remainDays = it.usageDays - elapsedDays;
+  const pct = clamp((elapsedDays / it.usageDays) * 100, 0, 100);
+  const remainPct = 100 - pct;
   let estQty = null;
   if (isPureNumber(it.quantity)) {
-    estQty = parseFloat(it.quantity) * clamp(remain, 0, it.usageDays) / it.usageDays;
+    estQty = parseFloat(it.quantity) * clamp(remainDays, 0, it.usageDays) / it.usageDays;
   }
-  return { start, elapsed, remain, pct, estQty };
+  return { start, elapsedDays, remainDays, pct, remainPct, estQty };
 }
 
 /* 价格涨跌指示：只显示比之前多了还是少了 */
@@ -337,16 +339,17 @@ function renderItems() {
       const cat = catName(it.category);
       let remainBadge = '';
       if (ro) {
-        const cls = ro.remain <= 0 ? 'badge danger' : (ro.remain <= 3 ? 'badge warn' : 'badge ok');
-        remainBadge = `<span class="${cls}">剩 ${ro.remain} 天</span>`;
+        const rd = Math.max(0, Math.ceil(ro.remainDays));
+        const cls = ro.remainDays <= 0 ? 'badge danger' : (ro.remainDays <= 3 ? 'badge warn' : 'badge ok');
+        remainBadge = `<span class="${cls}">剩 ${rd} 天</span>`;
       }
       return `
       <div class="card item-card">
         <div class="item-head">
           <div class="item-name">${esc(it.name)} <span class="cat-tag">${esc(cat)}</span> ${remainBadge}</div>
-          <div class="item-total">${fmtMoney(it.totalAmount)}</div>
+          <div class="item-total">${fmtMoney(it.totalAmount)} ${trend}</div>
         </div>
-        <div class="item-meta">单价 ${fmtMoney(it.price)} ${trend} · 数量 ${esc(it.quantity)}${it.usageDays ? ` · 可用 ${it.usageDays} 天` : ''}${it.startDate ? ` · 起 ${it.startDate}` : ''}</div>
+        <div class="item-meta">单价 ${fmtMoney(it.price)} · 数量 ${esc(it.quantity)}${it.usageDays ? ` · 可用 ${it.usageDays} 天` : ''}${it.startDate ? ` · 起 ${it.startDate}` : ''}</div>
         <div class="item-actions">
           <button class="mini" data-act="edit" data-id="${it.id}">编辑</button>
           <button class="mini danger" data-act="del" data-id="${it.id}">删除</button>
@@ -419,7 +422,7 @@ function trendMark(latest, prev) {
 
 function priceCard(it) {
   const hist = (it.priceHistory || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
-  const latest = it.price;
+  const latest = hist.length ? hist[hist.length - 1].price : it.totalAmount;
   const prev = hist.length >= 2 ? hist[hist.length - 2].price : null;
   const rows = hist.length
     ? hist.map((h) => `<li><span class="d">${h.date}</span><span>${fmtMoney(h.price)}</span></li>`).join('')
@@ -428,11 +431,13 @@ function priceCard(it) {
   <div class="card price-card">
     <div class="item-head">
       <div class="item-name">${esc(it.name)}</div>
-      <div class="item-total">${fmtMoney(it.totalAmount)}</div>
+      <div class="item-total">${fmtMoney(latest)}${trendMark(latest, prev)}</div>
     </div>
     <div class="item-meta">数量 ${esc(it.quantity || '—')}</div>
-    <div class="latest-line">最新价格 <b>${fmtMoney(latest)}</b>${trendMark(latest, prev)}</div>
-    <ul class="price-list">${rows}</ul>
+    <details class="hist">
+      <summary>价格记录（${hist.length}）</summary>
+      <ul class="price-list">${rows}</ul>
+    </details>
     <div class="item-actions"><button class="mini" data-act="price" data-id="${it.id}">记录价格</button></div>
   </div>`;
 }
@@ -443,12 +448,7 @@ function renderPrice() {
     box.innerHTML = '<div class="empty">还没有登记物品<br>先在「登记」页登记已买物品</div>';
     return;
   }
-  const groups = groupByCategory(db.items);
-  box.innerHTML = groups.map((g) => `
-    <div class="cat-group">
-      <div class="cat-head">📁 ${esc(g.category)} <span class="cat-count">${g.list.length}</span></div>
-      ${g.list.map((it) => priceCard(it)).join('')}
-    </div>`).join('');
+  box.innerHTML = db.items.map((it) => priceCard(it)).join('');
 }
 
 $('#price-list').addEventListener('click', (e) => {
@@ -456,28 +456,30 @@ $('#price-list').addEventListener('click', (e) => {
   if (btn) openPriceModal(btn.dataset.id);
 });
 
-/* 记录价格变化：只写日期和价格 */
+/* 记录价格变化：记录的是总价，只写日期和总价 */
 function openPriceModal(id) {
   const it = db.items.find((i) => i.id === id);
   if (!it) return;
+  const hist = (it.priceHistory || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+  const latest = hist.length ? hist[hist.length - 1].price : it.totalAmount;
   openModal('记录价格 · ' + it.name, `
     <label class="field">日期
       <input type="date" id="ph-date" value="${todayStr()}">
     </label>
-    <label class="field">价格（元）
-      <input type="number" id="ph-price" step="0.01" min="0" inputmode="decimal" value="${it.price}">
+    <label class="field">总价（元）
+      <input type="number" id="ph-price" step="0.01" min="0" inputmode="decimal" value="${latest}">
     </label>
   `, [
     { label: '取消', cls: 'ghost', fn: closeModal },
     { label: '保存', cls: 'primary', fn: () => {
       const date = $('#ph-date').value || todayStr();
       const price = parseFloat($('#ph-price').value);
-      if (!(price > 0)) { toast('请填写正确的价格'); return; }
+      if (!(price > 0)) { toast('请填写正确的总价'); return; }
       it.priceHistory = it.priceHistory || [];
       it.priceHistory.push({ date, price });
       it.priceHistory.sort((a, b) => (a.date < b.date ? -1 : 1));
-      it.price = price; /* 最新价格 */
-      save(); closeModal(); renderItems(); renderPrice(); toast('价格记录已保存');
+      it.totalAmount = price; /* 最新总价 */
+      save(); closeModal(); renderItems(); renderPrice(); renderStock(); toast('价格记录已保存');
     } }
   ]);
 }
@@ -736,9 +738,10 @@ function stockCard(it) {
       <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
     </div>`;
   }
+  const remainDays = Math.max(0, Math.ceil(ro.remainDays));
   let status, cls;
-  if (ro.remain <= 0) { status = '已用完'; cls = 'badge danger'; }
-  else if (ro.remain <= 3) { status = '即将用完'; cls = 'badge warn'; }
+  if (ro.remainDays <= 0) { status = '已用完'; cls = 'badge danger'; }
+  else if (ro.remainDays <= 3) { status = '即将用完'; cls = 'badge warn'; }
   else if (ro.pct >= 70) { status = '注意'; cls = 'badge warn'; }
   else { status = '充足'; cls = 'badge ok'; }
   const qtyInfo = ro.estQty != null
@@ -750,11 +753,8 @@ function stockCard(it) {
       <div class="item-name">${esc(it.name)}</div>
       <span class="${cls}">${status}</span>
     </div>
-    <div class="stock-days">已用 ${ro.elapsed} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${Math.max(ro.remain, 0)} 天</b></div>
-    <div class="progress">
-      <div class="bar"></div>
-      <div class="empty" style="width:${100 - ro.pct}%"></div>
-    </div>
+    <div class="stock-days">已用 ${Math.floor(ro.elapsedDays)} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${remainDays} 天</b></div>
+    <div class="progress"><div class="bar" style="width:${ro.remainPct.toFixed(2)}%"></div></div>
     <div class="item-meta">${qtyInfo} · 总价 ${fmtMoney(it.totalAmount)}${it.startDate ? ' · 开始 ' + it.startDate : ''}</div>
     <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
   </div>`;
@@ -764,7 +764,7 @@ function renderStock() {
   const totalValue = db.items.reduce((s, i) => s + i.totalAmount, 0);
   const lowCount = db.items.filter((i) => {
     const ro = remainingOf(i);
-    return ro && ro.remain <= 3;
+    return ro && ro.remainDays <= 3;
   }).length;
 
   $('#stock-sum').innerHTML = `
@@ -782,7 +782,7 @@ function renderStock() {
     g.list.sort((a, b) => {
       const ra = remainingOf(a);
       const rb = remainingOf(b);
-      if (ra && rb) return ra.remain - rb.remain;
+      if (ra && rb) return ra.remainDays - rb.remainDays;
       if (ra) return -1;
       if (rb) return 1;
       return 0;
@@ -799,6 +799,15 @@ $('#stock-list').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-del]');
   if (btn) deleteItem(btn.dataset.del);
 });
+
+/* 时间推进：剩余天数/进度条随时间动态变化 */
+function refreshTimeSensitive() {
+  if (document.hidden) return;
+  if ($('#page-stock').classList.contains('active')) renderStock();
+  else if ($('#page-register').classList.contains('active')) renderItems();
+}
+setInterval(refreshTimeSensitive, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshTimeSensitive(); });
 
 /* =====================================================
    安装到桌面（PWA 安装引导）

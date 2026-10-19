@@ -159,20 +159,17 @@ input::placeholder { color: #b6bece; }
 .tile .num { font-size: 14.5px; font-weight: 700; color: var(--primary); word-break: break-all; }
 .tile .lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
-/* ---------- 进度条：绿黄红分格渐变，灰色代表空 ---------- */
+/* ---------- 进度条：绿黄红分格，随时间一节节减少 ---------- */
 .progress {
-  position: relative; height: 10px; border-radius: 999px;
-  background: #e3e7ef; overflow: hidden; margin: 8px 0;
+  height: 10px; border-radius: 999px;
+  background: #edf0ff; overflow: hidden; margin: 8px 0;
 }
 .progress .bar {
-  position: absolute; inset: 0; border-radius: 999px;
+  height: 100%; border-radius: 999px;
   background-image:
     repeating-linear-gradient(90deg, transparent 0 9px, rgba(255,255,255,.55) 9px 10px),
     linear-gradient(90deg, #22c55e 0%, #f59e0b 55%, #ef4444 100%);
-}
-.progress .empty {
-  position: absolute; top: 0; right: 0; bottom: 0;
-  background: #e3e7ef; border-radius: 0 999px 999px 0;
+  transition: width .5s ease;
 }
 .stock-days { font-size: 13.5px; }
 .stock-days b { color: var(--primary); }
@@ -266,6 +263,14 @@ input::placeholder { color: #b6bece; }
   padding: 7px 0; border-top: 1px dashed var(--line); font-size: 14px;
 }
 .price-list li .d { color: var(--muted); font-size: 13px; }
+.hist { margin: 8px 0; }
+.hist summary {
+  cursor: pointer; color: var(--primary); font-size: 13px;
+  padding: 4px 0; list-style: none;
+}
+.hist summary::-webkit-details-marker { display: none; }
+.hist summary::before { content: '▸ '; }
+.hist[open] summary::before { content: '▾ '; }
 
 /* ---------- 安装横幅 ---------- */
 .install-banner {
