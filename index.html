@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>记账小助手</title>
+<meta name="description" content="手机记账软件：采购登记、价格对比、每日记账、剩余使用天数、花费占比统计">
+<meta name="theme-color" content="#4f7cff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="记账">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1 id="page-title">📋 采购登记</h1>
+  <button class="icon-btn" id="settings-btn" aria-label="设置">⚙️</button>
+</header>
+
+<main>
+
+  <!-- ============ 页1：采购登记 ============ -->
+  <section id="page-register" class="page active">
+    <form id="item-form" class="card form" autocomplete="off">
+      <h2>🛒 登记要买的物品</h2>
+      <label class="field">物品名称
+        <input id="f-name" type="text" placeholder="如：洗发水、大米、纸巾" required>
+      </label>
+      <div class="row2">
+        <label class="field">单价（元）
+          <input id="f-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" required>
+        </label>
+        <label class="field">数量
+          <input id="f-qty" type="number" step="0.01" min="0" inputmode="decimal" value="1" required>
+        </label>
+      </div>
+      <label class="field">总金额（元）· 自动计算
+        <input id="f-total" type="text" readonly placeholder="单价 × 数量">
+      </label>
+      <div class="row2">
+        <label class="field">使用天数（可选）
+          <input id="f-days" type="number" min="1" inputmode="numeric" placeholder="如 30">
+        </label>
+        <label class="field">开始使用日期
+          <input id="f-start" type="date">
+        </label>
+      </div>
+      <button type="submit" class="btn primary" id="item-submit">添加登记</button>
+    </form>
+    <div id="item-list"></div>
+  </section>
+
+  <!-- ============ 页2：每日记账 ============ -->
+  <section id="page-records" class="page">
+    <div class="summary">
+      <div class="tile"><div class="num" id="sum-day">¥0.00</div><div class="lbl">当日支出</div></div>
+      <div class="tile"><div class="num" id="sum-week">¥0.00</div><div class="lbl">本周支出</div></div>
+      <div class="tile"><div class="num" id="sum-month">¥0.00</div><div class="lbl">本月支出</div></div>
+    </div>
+    <form id="record-form" class="card form" autocomplete="off">
+      <h2>➕ 记一笔</h2>
+      <label class="field">日期
+        <input id="r-date" type="date" required>
+      </label>
+      <label class="field">物品名称
+        <input id="r-name" type="text" list="item-suggestions" placeholder="输入或选择物品" required>
+      </label>
+      <datalist id="item-suggestions"></datalist>
+      <div class="row2">
+        <label class="field">单价（元）
+          <input id="r-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" required>
+        </label>
+        <label class="field">数量
+          <input id="r-qty" type="number" step="0.01" min="0" inputmode="decimal" value="1" required>
+        </label>
+      </div>
+      <button type="submit" class="btn primary">记入</button>
+    </form>
+    <div class="card day-total" id="day-total">今日合计 ¥0.00</div>
+    <div id="record-list"></div>
+  </section>
+
+  <!-- ============ 页3：剩余使用天数 ============ -->
+  <section id="page-stock" class="page">
+    <div class="summary" id="stock-sum"></div>
+    <div id="stock-list"></div>
+  </section>
+
+  <!-- ============ 页4：花费占比 ============ -->
+  <section id="page-stats" class="page">
+    <div class="period-tabs">
+      <button class="period-tab" data-range="today">今日</button>
+      <button class="period-tab" data-range="week">本周</button>
+      <button class="period-tab active" data-range="month">本月</button>
+      <button class="period-tab" data-range="all">全部</button>
+    </div>
+    <div class="card">
+      <div class="stat-head">
+        <span class="muted">区间总支出</span>
+        <span id="stat-count" class="muted"></span>
+      </div>
+      <div class="stat-total" id="stat-total">¥0.00</div>
+      <canvas id="pie-chart"></canvas>
+      <div id="chart-legend"></div>
+    </div>
+    <div class="card hidden" id="top-card"></div>
+  </section>
+
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-page="register"><span class="ico">📋</span><span>登记</span></button>
+  <button class="tab" data-page="records"><span class="ico">📝</span><span>记账</span></button>
+  <button class="tab" data-page="stock"><span class="ico">📦</span><span>库存</span></button>
+  <button class="tab" data-page="stats"><span class="ico">📊</span><span>统计</span></button>
+</nav>
+
+<div id="modal-backdrop">
+  <div class="modal">
+    <div id="modal-title"></div>
+    <div id="modal-body"></div>
+    <div id="modal-foot"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="import-file" accept="application/json,.json" hidden>
+
+<script src="app.js"></script>
+</body>
+</html>
