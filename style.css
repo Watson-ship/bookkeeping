@@ -133,8 +133,8 @@ input::placeholder { color: #b6bece; }
 }
 .price-line .mini { margin-left: auto; }
 .diff { font-weight: 700; }
-.diff.up { color: #f04444; }
-.diff.down { color: var(--success); }
+.diff.up { color: #16a34a; }
+.diff.down { color: #dc2626; }
 .diff.flat { color: var(--muted); }
 .item-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
 .hist { margin: 6px 0; font-size: 12.5px; }
@@ -159,10 +159,21 @@ input::placeholder { color: #b6bece; }
 .tile .num { font-size: 14.5px; font-weight: 700; color: var(--primary); word-break: break-all; }
 .tile .lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
-/* ---------- 进度条 ---------- */
-.progress { height: 10px; border-radius: 999px; background: #e8ecf5; overflow: hidden; margin: 8px 0; }
-.bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4f7cff, #22c55e); transition: width .3s; }
-.bar.warn { background: linear-gradient(90deg, #f59e0b, #ff5b5b); }
+/* ---------- 进度条：绿黄红分格渐变，灰色代表空 ---------- */
+.progress {
+  position: relative; height: 10px; border-radius: 999px;
+  background: #e3e7ef; overflow: hidden; margin: 8px 0;
+}
+.progress .bar {
+  position: absolute; inset: 0; border-radius: 999px;
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 9px, rgba(255,255,255,.55) 9px 10px),
+    linear-gradient(90deg, #22c55e 0%, #f59e0b 55%, #ef4444 100%);
+}
+.progress .empty {
+  position: absolute; top: 0; right: 0; bottom: 0;
+  background: #e3e7ef; border-radius: 0 999px 999px 0;
+}
 .stock-days { font-size: 13.5px; }
 .stock-days b { color: var(--primary); }
 
@@ -283,3 +294,26 @@ input::placeholder { color: #b6bece; }
   border-radius: 999px; padding: 7px 14px; font-size: 13.5px; cursor: pointer;
 }
 .chip:active { background: #e6ecfb; }
+
+/* ---------- 分类分组与标签 ---------- */
+.cat-group { margin-bottom: 4px; }
+.cat-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  margin: 4px 2px 8px;
+}
+.cat-count {
+  font-size: 11px; font-weight: 600; background: #eef1f8; color: var(--muted);
+  border-radius: 999px; padding: 0 7px;
+}
+.cat-tag {
+  display: inline-block; font-size: 11px; font-weight: 600; color: #5b6b8c;
+  background: #eef1f8; border-radius: 999px; padding: 1px 8px; vertical-align: middle;
+}
+.muted-badge { background: #eef1f8; color: var(--muted); }
+
+/* ---------- 最新价格涨跌：贵了绿色上标 ▲ / 降了红色下标 ▼ ---------- */
+.latest-line { font-size: 14px; margin: 6px 0; color: var(--text); }
+.latest-line b { font-size: 16px; color: var(--primary); }
+sup.up { color: #16a34a; font-size: 11px; font-weight: 700; }
+sub.down { color: #dc2626; font-size: 11px; font-weight: 700; }

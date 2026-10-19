@@ -31,6 +31,10 @@
       <label class="field">物品名称
         <input id="f-name" type="text" placeholder="如：洗发水、大米、纸巾" required>
       </label>
+      <label class="field">分类（可选）
+        <input id="f-cat" type="text" list="category-suggestions" placeholder="如：食品、日用品、饮品">
+      </label>
+      <datalist id="category-suggestions"></datalist>
       <div class="row2">
         <label class="field">单价（元）
           <input id="f-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" required>
@@ -79,11 +83,11 @@
       </label>
       <datalist id="item-suggestions"></datalist>
       <div class="row2">
-        <label class="field">单价（元）
-          <input id="r-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" required>
+        <label class="field">总价（元）
+          <input id="r-total" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00" required>
         </label>
-        <label class="field">数量
-          <input id="r-qty" type="number" step="0.01" min="0" inputmode="decimal" value="1" required>
+        <label class="field">数量（可带单位）
+          <input id="r-qty" type="text" placeholder="如 1、2瓶、500ml">
         </label>
       </div>
       <button type="submit" class="btn primary">记入</button>

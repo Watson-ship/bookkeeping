@@ -57,6 +57,8 @@ function weekStart(s) { /* 周一作为一周开始 */
 
 function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
 
+function round2(n) { return Math.round(n * 100) / 100; }
+
 function isPureNumber(s) {
   return /^\d+(\.\d+)?$/.test(String(s == null ? '' : s).trim());
 }
@@ -67,16 +69,21 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function catName(of) {
+  const c = (of == null ? '' : String(of)).trim();
+  return c || '未分类';
+}
+
 /* ---------------- 数据存取 ---------------- */
 function normalize(d) {
   (d.items || []).forEach((it) => {
+    it.category = it.category ? String(it.category) : '';
     it.quantity = it.quantity == null ? '' : String(it.quantity);
     it.priceHistory = (it.priceHistory || []).map((h) => ({ date: h.date, price: Number(h.price) || 0 }));
   });
   (d.records || []).forEach((r) => {
     r.amount = Number(r.amount) || 0;
-    r.price = Number(r.price) || 0;
-    r.quantity = Number(r.quantity) || 0;
+    r.quantity = r.quantity == null ? '' : String(r.quantity);
   });
   return d;
 }
@@ -158,9 +165,7 @@ function switchTab(page) {
    ===================================================== */
 let editingId = null;
 
-function round2(n) { return Math.round(n * 100) / 100; }
-
-/* 单价 → 总金额 */
+/* 单价 → 总金额（数量确认 change 后才换算） */
 function autoFromPrice() {
   const p = parseFloat($('#f-price').value);
   const q = $('#f-qty').value.trim();
@@ -174,7 +179,7 @@ function autoFromPrice() {
   }
 }
 
-/* 总金额 → 单价 */
+/* 总金额 → 单价（数量确认 change 后才换算） */
 function autoFromTotal() {
   const t = parseFloat($('#f-total').value);
   const q = $('#f-qty').value.trim();
@@ -188,17 +193,18 @@ function autoFromTotal() {
   }
 }
 
-$('#f-price').addEventListener('input', () => {
+/* 输入时不立即换算，等数量/单价/总金额确认（change）后再换算 */
+$('#f-price').addEventListener('change', () => {
   $('#f-price').dataset.auto = ''; /* 手动改单价 */
   autoFromPrice();
 });
 
-$('#f-total').addEventListener('input', () => {
+$('#f-total').addEventListener('change', () => {
   $('#f-total').dataset.auto = ''; /* 手动改总金额 */
   autoFromTotal();
 });
 
-$('#f-qty').addEventListener('input', () => {
+$('#f-qty').addEventListener('change', () => {
   const q = $('#f-qty').value.trim();
   if (!isPureNumber(q)) return;
   if (parseFloat($('#f-price').value) > 0) autoFromPrice();
@@ -208,6 +214,7 @@ $('#f-qty').addEventListener('input', () => {
 $('#item-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = $('#f-name').value.trim();
+  const category = $('#f-cat').value.trim();
   const price = parseFloat($('#f-price').value);
   const qty = $('#f-qty').value.trim();
   const usageDays = parseInt($('#f-days').value, 10) || 0;
@@ -218,7 +225,7 @@ $('#item-form').addEventListener('submit', (e) => {
   if (qty === '') { toast('请填写数量'); return; }
   if (!(total > 0)) {
     if (isPureNumber(qty)) {
-      total = Math.round(price * parseFloat(qty) * 100) / 100;
+      total = round2(price * parseFloat(qty));
     } else {
       toast('请填写总金额'); return;
     }
@@ -228,7 +235,7 @@ $('#item-form').addEventListener('submit', (e) => {
     const it = db.items.find((i) => i.id === editingId);
     if (it) {
       Object.assign(it, {
-        name, price, quantity: qty, totalAmount: total,
+        name, category, price, quantity: qty, totalAmount: total,
         usageDays, startDate: startDate || it.startDate
       });
       toast('已保存修改');
@@ -236,14 +243,18 @@ $('#item-form').addEventListener('submit', (e) => {
     exitEdit();
   } else {
     db.items.unshift({
-      id: uid(), name, price, quantity: qty, totalAmount: total,
-      usageDays, startDate, priceHistory: [], createdAt: Date.now()
+      id: uid(), name, category, price, quantity: qty, totalAmount: total,
+      usageDays, startDate,
+      /* 登记价作为价格对比的第一个记录 */
+      priceHistory: [{ date: startDate || todayStr(), price: price }],
+      createdAt: Date.now()
     });
     toast('已登记：' + name);
   }
   save();
   resetItemForm();
   renderItems();
+  refreshCategories();
 });
 
 function resetItemForm() {
@@ -268,6 +279,7 @@ function editItem(id) {
   if (!it) return;
   editingId = id;
   $('#f-name').value = it.name;
+  $('#f-cat').value = it.category || '';
   $('#f-price').value = it.price;
   $('#f-qty').value = it.quantity;
   $('#f-total').value = it.totalAmount;
@@ -318,31 +330,42 @@ function renderItems() {
   const box = $('#item-list');
   if (!db.items.length) {
     box.innerHTML = '<div class="empty">还没有登记物品<br>在上方表单登记已买的物品吧 🛍️</div>';
-    return;
+  } else {
+    box.innerHTML = db.items.map((it) => {
+      const ro = remainingOf(it);
+      const trend = priceTrend(it);
+      const cat = catName(it.category);
+      let remainBadge = '';
+      if (ro) {
+        const cls = ro.remain <= 0 ? 'badge danger' : (ro.remain <= 3 ? 'badge warn' : 'badge ok');
+        remainBadge = `<span class="${cls}">剩 ${ro.remain} 天</span>`;
+      }
+      return `
+      <div class="card item-card">
+        <div class="item-head">
+          <div class="item-name">${esc(it.name)} <span class="cat-tag">${esc(cat)}</span> ${remainBadge}</div>
+          <div class="item-total">${fmtMoney(it.totalAmount)}</div>
+        </div>
+        <div class="item-meta">单价 ${fmtMoney(it.price)} ${trend} · 数量 ${esc(it.quantity)}${it.usageDays ? ` · 可用 ${it.usageDays} 天` : ''}${it.startDate ? ` · 起 ${it.startDate}` : ''}</div>
+        <div class="item-actions">
+          <button class="mini" data-act="edit" data-id="${it.id}">编辑</button>
+          <button class="mini danger" data-act="del" data-id="${it.id}">删除</button>
+        </div>
+      </div>`;
+    }).join('');
   }
-  box.innerHTML = db.items.map((it) => {
-    const ro = remainingOf(it);
-    const trend = priceTrend(it);
-    let remainBadge = '';
-    if (ro) {
-      const cls = ro.remain <= 0 ? 'badge danger' : (ro.remain <= 3 ? 'badge warn' : 'badge ok');
-      remainBadge = `<span class="${cls}">剩 ${ro.remain} 天</span>`;
-    }
-    return `
-    <div class="card item-card">
-      <div class="item-head">
-        <div class="item-name">${esc(it.name)} ${remainBadge}</div>
-        <div class="item-total">${fmtMoney(it.totalAmount)}</div>
-      </div>
-      <div class="item-meta">单价 ${fmtMoney(it.price)} ${trend} · 数量 ${esc(it.quantity)}${it.usageDays ? ` · 可用 ${it.usageDays} 天` : ''}${it.startDate ? ` · 起 ${it.startDate}` : ''}</div>
-      <div class="item-actions">
-        <button class="mini" data-act="record" data-id="${it.id}">记账</button>
-        <button class="mini" data-act="edit" data-id="${it.id}">编辑</button>
-        <button class="mini danger" data-act="del" data-id="${it.id}">删除</button>
-      </div>
-    </div>`;
-  }).join('');
   renderQuickChips();
+  refreshCategories();
+}
+
+/* 分类候选：从已登记物品中收集 */
+function refreshCategories() {
+  const set = new Set();
+  db.items.forEach((i) => {
+    if (i.category && String(i.category).trim()) set.add(String(i.category).trim());
+  });
+  $('#category-suggestions').innerHTML = Array.from(set)
+    .map((c) => `<option value="${esc(c)}"></option>`).join('');
 }
 
 $('#item-list').addEventListener('click', (e) => {
@@ -352,10 +375,6 @@ $('#item-list').addEventListener('click', (e) => {
   const act = btn.dataset.act;
   if (act === 'edit') editItem(id);
   else if (act === 'del') deleteItem(id);
-  else if (act === 'record') {
-    const it = db.items.find((i) => i.id === id);
-    if (it) prefillRecord(it.name, it.price);
-  }
 });
 
 /* 删除登记（登记页 / 库存页共用） */
@@ -370,40 +389,66 @@ function deleteItem(id) {
   ]);
 }
 
-/* 从登记直接录入记账 */
-function prefillRecord(name, price) {
-  $('#r-name').value = name;
-  $('#r-price').value = (price != null && price > 0) ? price : '';
-  switchTab('records');
-  $('#r-qty').focus();
-}
-
 /* =====================================================
    页3：价格对比
    ===================================================== */
+function groupByCategory(items) {
+  const m = new Map();
+  items.forEach((it) => {
+    const c = catName(it.category);
+    if (!m.has(c)) m.set(c, []);
+    m.get(c).push(it);
+  });
+  const arr = Array.from(m.entries()).map(([category, list]) => ({ category, list }));
+  arr.sort((a, b) => {
+    if (a.category === '未分类') return 1;
+    if (b.category === '未分类') return -1;
+    return a.category.localeCompare(b.category, 'zh');
+  });
+  return arr;
+}
+
+/* 最新价格涨跌：贵了绿色上标 ▲，降了红色下标 ▼ */
+function trendMark(latest, prev) {
+  if (prev == null) return '';
+  const d = latest - prev;
+  if (d > 0) return '<sup class="up">▲</sup>';
+  if (d < 0) return '<sub class="down">▼</sub>';
+  return '<span class="muted" style="font-size:11px">持平</span>';
+}
+
+function priceCard(it) {
+  const hist = (it.priceHistory || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
+  const latest = it.price;
+  const prev = hist.length >= 2 ? hist[hist.length - 2].price : null;
+  const rows = hist.length
+    ? hist.map((h) => `<li><span class="d">${h.date}</span><span>${fmtMoney(h.price)}</span></li>`).join('')
+    : '<li><span class="d muted">暂无价格记录</span></li>';
+  return `
+  <div class="card price-card">
+    <div class="item-head">
+      <div class="item-name">${esc(it.name)}</div>
+      <div class="item-total">${fmtMoney(it.totalAmount)}</div>
+    </div>
+    <div class="item-meta">数量 ${esc(it.quantity || '—')}</div>
+    <div class="latest-line">最新价格 <b>${fmtMoney(latest)}</b>${trendMark(latest, prev)}</div>
+    <ul class="price-list">${rows}</ul>
+    <div class="item-actions"><button class="mini" data-act="price" data-id="${it.id}">记录价格</button></div>
+  </div>`;
+}
+
 function renderPrice() {
   const box = $('#price-list');
   if (!db.items.length) {
     box.innerHTML = '<div class="empty">还没有登记物品<br>先在「登记」页登记已买物品</div>';
     return;
   }
-  box.innerHTML = db.items.map((it) => {
-    const hist = (it.priceHistory || []).slice().sort((a, b) => (a.date < b.date ? -1 : 1));
-    const rows = hist.length
-      ? hist.map((h) => `<li><span class="d">${h.date}</span><span>${fmtMoney(h.price)}</span></li>`).join('')
-      : '<li><span class="d muted">暂无价格记录</span></li>';
-    return `
-    <div class="card price-card">
-      <div class="item-head">
-        <div class="item-name">${esc(it.name)}</div>
-        <div class="latest-price">${fmtMoney(it.price)}</div>
-      </div>
-      <ul class="price-list">${rows}</ul>
-      <div class="item-actions">
-        <button class="mini" data-act="price" data-id="${it.id}">记录价格</button>
-      </div>
-    </div>`;
-  }).join('');
+  const groups = groupByCategory(db.items);
+  box.innerHTML = groups.map((g) => `
+    <div class="cat-group">
+      <div class="cat-head">📁 ${esc(g.category)} <span class="cat-count">${g.list.length}</span></div>
+      ${g.list.map((it) => priceCard(it)).join('')}
+    </div>`).join('');
 }
 
 $('#price-list').addEventListener('click', (e) => {
@@ -455,40 +500,30 @@ function renderQuickChips() {
   const box = $('#rec-chips');
   if (!db.items.length) { wrap.classList.add('hidden'); box.innerHTML = ''; return; }
   wrap.classList.remove('hidden');
-  box.innerHTML = db.items.map((it) => `<button type="button" class="chip" data-name="${esc(it.name)}" data-price="${it.price}">${esc(it.name)}</button>`).join('');
+  box.innerHTML = db.items.map((it) => `<button type="button" class="chip" data-name="${esc(it.name)}">${esc(it.name)}</button>`).join('');
 }
 
 $('#rec-chips').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
   $('#r-name').value = chip.dataset.name;
-  $('#r-price').value = chip.dataset.price;
-  $('#r-qty').focus();
-});
-
-$('#r-name').addEventListener('change', () => {
-  const n = $('#r-name').value.trim();
-  const it = db.items.find((i) => i.name === n);
-  if (it) $('#r-price').value = it.price;
+  $('#r-total').focus();
 });
 
 $('#record-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const date = $('#r-date').value || todayStr();
   const name = $('#r-name').value.trim();
-  const price = parseFloat($('#r-price').value);
-  const qty = parseFloat($('#r-qty').value);
+  const amount = parseFloat($('#r-total').value); /* 总价 */
+  const qty = $('#r-qty').value.trim();
   if (!name) { toast('请填写物品名称'); return; }
-  if (!(price > 0)) { toast('请填写正确的单价'); return; }
-  if (!(qty > 0)) { toast('请填写正确的数量'); return; }
+  if (!(amount > 0)) { toast('请填写正确的总价'); return; }
   db.records.push({
-    id: uid(), date, name, price, quantity: qty,
-    amount: Math.round(price * qty * 100) / 100, createdAt: Date.now()
+    id: uid(), date, name, amount: round2(amount), quantity: qty, createdAt: Date.now()
   });
   save();
   $('#record-form').reset();
   $('#r-date').value = date;
-  $('#r-qty').value = '1';
   refreshSuggestions();
   renderRecords();
   toast('已记一笔');
@@ -501,13 +536,17 @@ function recordsForDate(date) {
 function groupRecords(recs) {
   const m = new Map();
   recs.forEach((r) => {
-    if (!m.has(r.name)) m.set(r.name, { name: r.name, qty: 0, amount: 0, entries: [] });
+    if (!m.has(r.name)) m.set(r.name, { name: r.name, amount: 0, entries: [] });
     const g = m.get(r.name);
-    g.qty += r.quantity;
     g.amount += r.amount;
     g.entries.push(r);
   });
-  return Array.from(m.values()).sort((a, b) => b.amount - a.amount);
+  return Array.from(m.values()).map((g) => ({
+    name: g.name,
+    amount: g.amount,
+    entries: g.entries,
+    qtyText: g.entries.map((en) => en.quantity).filter(Boolean).join('、')
+  })).sort((a, b) => b.amount - a.amount);
 }
 
 function renderRecords() {
@@ -548,9 +587,9 @@ function renderRecords() {
           <div class="item-name">${esc(g.name)}</div>
           <div class="item-total">${fmtMoney(g.amount)}</div>
         </div>
-        <div class="item-meta">共 ${fmtQty(g.qty)} 件 · ${g.entries.length} 笔<span class="chev">▾</span></div>
+        <div class="item-meta">${g.entries.length} 笔${g.qtyText ? ' · 数量 ' + esc(g.qtyText) : ''}<span class="chev">▾</span></div>
         <div class="rec-detail hidden">
-          ${g.entries.map((en) => `<div class="rec-entry">单价 ${fmtMoney(en.price)} × ${fmtQty(en.quantity)} = ${fmtMoney(en.amount)}<button class="mini danger" data-del="${en.id}">删</button></div>`).join('')}
+          ${g.entries.map((en) => `<div class="rec-entry">${en.quantity ? esc(en.quantity) : '—'} · ${fmtMoney(en.amount)}<button class="mini danger" data-del="${en.id}">删</button></div>`).join('')}
         </div>
       </div>`).join('');
   }
@@ -684,14 +723,49 @@ window.addEventListener('resize', () => {
 /* =====================================================
    页4：剩余使用天数（库存）
    ===================================================== */
+function stockCard(it) {
+  const ro = remainingOf(it);
+  if (!ro) {
+    return `
+    <div class="card stock-card">
+      <div class="item-head">
+        <div class="item-name">${esc(it.name)}</div>
+        <span class="badge muted-badge">未设置</span>
+      </div>
+      <div class="item-meta">数量 ${esc(it.quantity || '—')} · 总价 ${fmtMoney(it.totalAmount)} · 未设置使用天数</div>
+      <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
+    </div>`;
+  }
+  let status, cls;
+  if (ro.remain <= 0) { status = '已用完'; cls = 'badge danger'; }
+  else if (ro.remain <= 3) { status = '即将用完'; cls = 'badge warn'; }
+  else if (ro.pct >= 70) { status = '注意'; cls = 'badge warn'; }
+  else { status = '充足'; cls = 'badge ok'; }
+  const qtyInfo = ro.estQty != null
+    ? `预计剩余数量：${fmtQty(ro.estQty)} / ${esc(it.quantity)}`
+    : `数量：${esc(it.quantity || '—')}`;
+  return `
+  <div class="card stock-card">
+    <div class="item-head">
+      <div class="item-name">${esc(it.name)}</div>
+      <span class="${cls}">${status}</span>
+    </div>
+    <div class="stock-days">已用 ${ro.elapsed} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${Math.max(ro.remain, 0)} 天</b></div>
+    <div class="progress">
+      <div class="bar"></div>
+      <div class="empty" style="width:${100 - ro.pct}%"></div>
+    </div>
+    <div class="item-meta">${qtyInfo} · 总价 ${fmtMoney(it.totalAmount)}${it.startDate ? ' · 开始 ' + it.startDate : ''}</div>
+    <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
+  </div>`;
+}
+
 function renderStock() {
-  const withDays = db.items.filter((i) => i.usageDays > 0);
-  const others = db.items.filter((i) => !(i.usageDays > 0));
-  const sorted = withDays
-    .map((i) => ({ it: i, ro: remainingOf(i) }))
-    .sort((a, b) => a.ro.remain - b.ro.remain);
-  const lowCount = sorted.filter((s) => s.ro.remain <= 3).length;
   const totalValue = db.items.reduce((s, i) => s + i.totalAmount, 0);
+  const lowCount = db.items.filter((i) => {
+    const ro = remainingOf(i);
+    return ro && ro.remain <= 3;
+  }).length;
 
   $('#stock-sum').innerHTML = `
     <div class="tile"><div class="num">${db.items.length}</div><div class="lbl">登记物品</div></div>
@@ -699,54 +773,26 @@ function renderStock() {
     <div class="tile"><div class="num">${lowCount}</div><div class="lbl">需补货</div></div>`;
 
   const box = $('#stock-list');
-  if (!sorted.length) {
-    box.innerHTML = '<div class="empty">暂无设置「使用天数」的物品<br>在登记时填写使用天数，即可查看剩余天数与进度条</div>';
-    if (others.length) {
-      box.innerHTML += others.map((o) => `
-        <div class="card muted-card stock-card">
-          <div class="item-head">
-            <div class="item-name">${esc(o.name)}</div>
-            <button class="mini danger" data-del="${o.id}">删除</button>
-          </div>
-          <div class="item-meta">未设置使用天数</div>
-        </div>`).join('');
-    }
+  if (!db.items.length) {
+    box.innerHTML = '<div class="empty">还没有登记物品<br>登记物品并设置使用天数后，这里会显示剩余天数与进度条</div>';
     return;
   }
-
-  box.innerHTML = sorted.map(({ it, ro }) => {
-    let status, cls;
-    if (ro.remain <= 0) { status = '已用完'; cls = 'badge danger'; }
-    else if (ro.remain <= 3) { status = '即将用完'; cls = 'badge warn'; }
-    else if (ro.pct >= 70) { status = '注意'; cls = 'badge warn'; }
-    else { status = '充足'; cls = 'badge ok'; }
-    const barCls = (ro.remain <= 3) ? 'bar warn' : 'bar';
-    const qtyInfo = ro.estQty != null
-      ? `预计剩余数量：${fmtQty(ro.estQty)} / ${esc(it.quantity)}`
-      : `数量：${esc(it.quantity)}`;
-    return `
-    <div class="card stock-card">
-      <div class="item-head">
-        <div class="item-name">${esc(it.name)}</div>
-        <span class="${cls}">${status}</span>
-      </div>
-      <div class="stock-days">已用 ${ro.elapsed} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${Math.max(ro.remain, 0)} 天</b></div>
-      <div class="progress"><div class="${barCls}" style="width:${ro.pct}%"></div></div>
-      <div class="item-meta">${qtyInfo}${it.startDate ? ' · 开始日期 ' + it.startDate : ''}</div>
-      <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
-    </div>`;
-  }).join('');
-
-  if (others.length) {
-    box.innerHTML += others.map((o) => `
-      <div class="card muted-card stock-card">
-        <div class="item-head">
-          <div class="item-name">${esc(o.name)}</div>
-          <button class="mini danger" data-del="${o.id}">删除</button>
-        </div>
-        <div class="item-meta">未设置使用天数</div>
-      </div>`).join('');
-  }
+  const groups = groupByCategory(db.items);
+  groups.forEach((g) => {
+    g.list.sort((a, b) => {
+      const ra = remainingOf(a);
+      const rb = remainingOf(b);
+      if (ra && rb) return ra.remain - rb.remain;
+      if (ra) return -1;
+      if (rb) return 1;
+      return 0;
+    });
+  });
+  box.innerHTML = groups.map((g) => `
+    <div class="cat-group">
+      <div class="cat-head">📁 ${esc(g.category)} <span class="cat-count">${g.list.length}</span></div>
+      ${g.list.map((it) => stockCard(it)).join('')}
+    </div>`).join('');
 }
 
 $('#stock-list').addEventListener('click', (e) => {
@@ -883,6 +929,7 @@ function renderAll() {
   renderRecords();
   renderPrice();
   renderStock();
+  refreshCategories();
 }
 
 /* ---------------- 初始化 ---------------- */
