@@ -101,6 +101,12 @@ input::placeholder { color: #b6bece; }
 .row2 { display: flex; gap: 10px; }
 .row2 .field { flex: 1; min-width: 0; }
 
+/* 记账表单：两列网格，整齐紧凑 */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 10px; margin-bottom: 12px; }
+.form-grid .field { margin-bottom: 0; }
+.form-grid .field input { height: 44px; }
+.form-grid .full { grid-column: 1 / -1; }
+
 /* ---------- 按钮 ---------- */
 .btn {
   display: block; width: 100%; height: 46px; border: none; border-radius: 12px;
@@ -293,8 +299,9 @@ input::placeholder { color: #b6bece; }
 /* ---------- 快捷记账芯片 ---------- */
 .quick-rec { padding: 12px 14px; }
 .quick-title { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
 .chip {
+  flex: none;
   border: 1px solid var(--line); background: #f6f8fd; color: var(--primary);
   border-radius: 999px; padding: 7px 14px; font-size: 13.5px; cursor: pointer;
 }
