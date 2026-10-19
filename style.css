@@ -273,3 +273,13 @@ input::placeholder { color: #b6bece; }
 
 /* 4 个汇总小方块，缩小字号以免溢出 */
 .summary .tile .num { font-size: 12.5px; }
+
+/* ---------- 快捷记账芯片 ---------- */
+.quick-rec { padding: 12px 14px; }
+.quick-title { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  border: 1px solid var(--line); background: #f6f8fd; color: var(--primary);
+  border-radius: 999px; padding: 7px 14px; font-size: 13.5px; cursor: pointer;
+}
+.chip:active { background: #e6ecfb; }

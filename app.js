@@ -158,12 +158,15 @@ function switchTab(page) {
    ===================================================== */
 let editingId = null;
 
-function autoTotal() {
+function round2(n) { return Math.round(n * 100) / 100; }
+
+/* 单价 → 总金额 */
+function autoFromPrice() {
   const p = parseFloat($('#f-price').value);
   const q = $('#f-qty').value.trim();
   const totalEl = $('#f-total');
   if (p > 0 && isPureNumber(q)) {
-    const auto = String(Math.round(p * parseFloat(q) * 100) / 100);
+    const auto = String(round2(p * parseFloat(q)));
     if (totalEl.value === '' || totalEl.value === (totalEl.dataset.auto || '')) {
       totalEl.value = auto;
       totalEl.dataset.auto = auto;
@@ -171,10 +174,35 @@ function autoTotal() {
   }
 }
 
-$('#f-total').addEventListener('input', () => { $('#f-total').dataset.auto = ''; });
+/* 总金额 → 单价 */
+function autoFromTotal() {
+  const t = parseFloat($('#f-total').value);
+  const q = $('#f-qty').value.trim();
+  const priceEl = $('#f-price');
+  if (t > 0 && isPureNumber(q)) {
+    const auto = String(round2(t / parseFloat(q)));
+    if (priceEl.value === '' || priceEl.value === (priceEl.dataset.auto || '')) {
+      priceEl.value = auto;
+      priceEl.dataset.auto = auto;
+    }
+  }
+}
 
-$('#item-form').addEventListener('input', (e) => {
-  if (e.target.id === 'f-price' || e.target.id === 'f-qty') autoTotal();
+$('#f-price').addEventListener('input', () => {
+  $('#f-price').dataset.auto = ''; /* 手动改单价 */
+  autoFromPrice();
+});
+
+$('#f-total').addEventListener('input', () => {
+  $('#f-total').dataset.auto = ''; /* 手动改总金额 */
+  autoFromTotal();
+});
+
+$('#f-qty').addEventListener('input', () => {
+  const q = $('#f-qty').value.trim();
+  if (!isPureNumber(q)) return;
+  if (parseFloat($('#f-price').value) > 0) autoFromPrice();
+  else if (parseFloat($('#f-total').value) > 0) autoFromTotal();
 });
 
 $('#item-form').addEventListener('submit', (e) => {
@@ -222,6 +250,7 @@ function resetItemForm() {
   $('#item-form').reset();
   $('#f-qty').value = '';
   $('#f-start').value = todayStr();
+  $('#f-price').dataset.auto = '';
   $('#f-total').dataset.auto = '';
 }
 
@@ -242,6 +271,8 @@ function editItem(id) {
   $('#f-price').value = it.price;
   $('#f-qty').value = it.quantity;
   $('#f-total').value = it.totalAmount;
+  $('#f-price').dataset.auto = '';
+  $('#f-total').dataset.auto = '';
   $('#f-days').value = it.usageDays || '';
   $('#f-start').value = it.startDate || todayStr();
   $('#item-form h2').textContent = '✏️ 修改：' + it.name;
@@ -305,11 +336,13 @@ function renderItems() {
       </div>
       <div class="item-meta">单价 ${fmtMoney(it.price)} ${trend} · 数量 ${esc(it.quantity)}${it.usageDays ? ` · 可用 ${it.usageDays} 天` : ''}${it.startDate ? ` · 起 ${it.startDate}` : ''}</div>
       <div class="item-actions">
+        <button class="mini" data-act="record" data-id="${it.id}">记账</button>
         <button class="mini" data-act="edit" data-id="${it.id}">编辑</button>
         <button class="mini danger" data-act="del" data-id="${it.id}">删除</button>
       </div>
     </div>`;
   }).join('');
+  renderQuickChips();
 }
 
 $('#item-list').addEventListener('click', (e) => {
@@ -317,19 +350,33 @@ $('#item-list').addEventListener('click', (e) => {
   if (!btn) return;
   const id = btn.dataset.id;
   const act = btn.dataset.act;
-  if (act === 'edit') {
-    editItem(id);
-  } else if (act === 'del') {
+  if (act === 'edit') editItem(id);
+  else if (act === 'del') deleteItem(id);
+  else if (act === 'record') {
     const it = db.items.find((i) => i.id === id);
-    openModal('删除登记', `确定删除「${esc(it ? it.name : '')}」吗？<br><span class="muted" style="font-size:13px">仅删除登记，不影响已记的账目</span>`, [
-      { label: '取消', cls: 'ghost', fn: closeModal },
-      { label: '删除', cls: 'danger', fn: () => {
-        db.items = db.items.filter((i) => i.id !== id);
-        save(); closeModal(); renderItems(); toast('已删除');
-      } }
-    ]);
+    if (it) prefillRecord(it.name, it.price);
   }
 });
+
+/* 删除登记（登记页 / 库存页共用） */
+function deleteItem(id) {
+  const it = db.items.find((i) => i.id === id);
+  openModal('删除登记', `确定删除「${esc(it ? it.name : '')}」吗？<br><span class="muted" style="font-size:13px">仅删除登记，不影响已记的账目</span>`, [
+    { label: '取消', cls: 'ghost', fn: closeModal },
+    { label: '删除', cls: 'danger', fn: () => {
+      db.items = db.items.filter((i) => i.id !== id);
+      save(); closeModal(); renderItems(); renderPrice(); renderStock(); refreshSuggestions(); toast('已删除');
+    } }
+  ]);
+}
+
+/* 从登记直接录入记账 */
+function prefillRecord(name, price) {
+  $('#r-name').value = name;
+  $('#r-price').value = (price != null && price > 0) ? price : '';
+  switchTab('records');
+  $('#r-qty').focus();
+}
 
 /* =====================================================
    页3：价格对比
@@ -399,7 +446,25 @@ function refreshSuggestions() {
   db.records.forEach((r) => names.add(r.name));
   $('#item-suggestions').innerHTML = Array.from(names)
     .map((n) => `<option value="${esc(n)}"></option>`).join('');
+  renderQuickChips();
 }
+
+/* 记账页快捷录入：已登记物品芯片 */
+function renderQuickChips() {
+  const wrap = $('#quick-rec');
+  const box = $('#rec-chips');
+  if (!db.items.length) { wrap.classList.add('hidden'); box.innerHTML = ''; return; }
+  wrap.classList.remove('hidden');
+  box.innerHTML = db.items.map((it) => `<button type="button" class="chip" data-name="${esc(it.name)}" data-price="${it.price}">${esc(it.name)}</button>`).join('');
+}
+
+$('#rec-chips').addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  $('#r-name').value = chip.dataset.name;
+  $('#r-price').value = chip.dataset.price;
+  $('#r-qty').focus();
+});
 
 $('#r-name').addEventListener('change', () => {
   const n = $('#r-name').value.trim();
@@ -637,7 +702,14 @@ function renderStock() {
   if (!sorted.length) {
     box.innerHTML = '<div class="empty">暂无设置「使用天数」的物品<br>在登记时填写使用天数，即可查看剩余天数与进度条</div>';
     if (others.length) {
-      box.innerHTML += `<div class="card muted-card">未设置使用天数的物品：${others.map((o) => esc(o.name)).join('、')}</div>`;
+      box.innerHTML += others.map((o) => `
+        <div class="card muted-card stock-card">
+          <div class="item-head">
+            <div class="item-name">${esc(o.name)}</div>
+            <button class="mini danger" data-del="${o.id}">删除</button>
+          </div>
+          <div class="item-meta">未设置使用天数</div>
+        </div>`).join('');
     }
     return;
   }
@@ -661,13 +733,26 @@ function renderStock() {
       <div class="stock-days">已用 ${ro.elapsed} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${Math.max(ro.remain, 0)} 天</b></div>
       <div class="progress"><div class="${barCls}" style="width:${ro.pct}%"></div></div>
       <div class="item-meta">${qtyInfo}${it.startDate ? ' · 开始日期 ' + it.startDate : ''}</div>
+      <div class="item-actions"><button class="mini danger" data-del="${it.id}">删除</button></div>
     </div>`;
   }).join('');
 
   if (others.length) {
-    box.innerHTML += `<div class="card muted-card">未设置使用天数的物品：${others.map((o) => esc(o.name)).join('、')}</div>`;
+    box.innerHTML += others.map((o) => `
+      <div class="card muted-card stock-card">
+        <div class="item-head">
+          <div class="item-name">${esc(o.name)}</div>
+          <button class="mini danger" data-del="${o.id}">删除</button>
+        </div>
+        <div class="item-meta">未设置使用天数</div>
+      </div>`).join('');
   }
 }
+
+$('#stock-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-del]');
+  if (btn) deleteItem(btn.dataset.del);
+});
 
 /* =====================================================
    安装到桌面（PWA 安装引导）
