@@ -80,14 +80,14 @@ main {
 /* ---------- 卡片与表单 ---------- */
 .card {
   background: var(--card); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 16px; margin-bottom: 12px;
+  box-shadow: var(--shadow); padding: 14px; margin-bottom: 10px;
 }
-.form h2 { margin: 0 0 14px; font-size: 16px; }
-.field { display: block; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
-.field input { margin-top: 4px; }
+.form h2 { margin: 0 0 10px; font-size: 15px; }
+.field { display: block; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+.field input { margin-top: 3px; }
 input {
-  width: 100%; height: 46px; border: 1px solid var(--line); border-radius: 12px;
-  padding: 0 12px; font-size: 16px; color: var(--text); background: #fafbfe;
+  width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 0 10px; font-size: 16px; color: var(--text); background: #fafbfe;
   outline: none; transition: border-color .15s, box-shadow .15s, background .15s;
   -webkit-appearance: none; appearance: none;
 }
@@ -102,15 +102,15 @@ input::placeholder { color: #b6bece; }
 .row2 .field { flex: 1; min-width: 0; }
 
 /* 记账表单：两列网格，整齐紧凑 */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 10px; margin-bottom: 12px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 8px; margin-bottom: 10px; }
 .form-grid .field { margin-bottom: 0; }
-.form-grid .field input { height: 44px; }
+.form-grid .field input { height: 38px; }
 .form-grid .full { grid-column: 1 / -1; }
 
 /* ---------- 按钮 ---------- */
 .btn {
-  display: block; width: 100%; height: 46px; border: none; border-radius: 12px;
-  font-size: 16px; font-weight: 600; cursor: pointer;
+  display: block; width: 100%; height: 42px; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 600; cursor: pointer;
 }
 .btn.primary {
   background: linear-gradient(135deg, var(--primary), #7c5cff); color: #fff;
@@ -160,9 +160,9 @@ input::placeholder { color: #b6bece; }
 .summary { display: flex; gap: 8px; margin-bottom: 12px; }
 .tile {
   flex: 1; text-align: center; background: var(--card); border-radius: 12px;
-  padding: 12px 4px; box-shadow: var(--shadow); min-width: 0;
+  padding: 10px 4px; box-shadow: var(--shadow); min-width: 0;
 }
-.tile .num { font-size: 14.5px; font-weight: 700; color: var(--primary); word-break: break-all; }
+.tile .num { font-size: 13px; font-weight: 700; color: var(--primary); word-break: break-all; }
 .tile .lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
 /* ---------- 进度条：绿黄红分格，随时间一节节减少 ---------- */
@@ -297,35 +297,16 @@ input::placeholder { color: #b6bece; }
 .summary .tile .num { font-size: 12.5px; }
 
 /* ---------- 快捷记账芯片 ---------- */
-.quick-rec { padding: 12px 14px; }
-.quick-title { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-.chips { display: flex; gap: 8px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
+.quick-rec { padding: 10px 12px; }
+.quick-title { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; }
 .chip {
   flex: none;
   border: 1px solid var(--line); background: #f6f8fd; color: var(--primary);
-  border-radius: 999px; padding: 7px 14px; font-size: 13.5px; cursor: pointer;
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer;
 }
 .chip:active { background: #e6ecfb; }
 
-/* ---------- 分类分组与标签 ---------- */
-.cat-group { margin-bottom: 4px; }
-.cat-head {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 700; color: var(--muted);
-  margin: 4px 2px 8px;
-}
-.cat-count {
-  font-size: 11px; font-weight: 600; background: #eef1f8; color: var(--muted);
-  border-radius: 999px; padding: 0 7px;
-}
-.cat-tag {
-  display: inline-block; font-size: 11px; font-weight: 600; color: #5b6b8c;
-  background: #eef1f8; border-radius: 999px; padding: 1px 8px; vertical-align: middle;
-}
-.muted-badge { background: #eef1f8; color: var(--muted); }
-
 /* ---------- 最新价格涨跌：贵了绿色上标 ▲ / 降了红色下标 ▼ ---------- */
-.latest-line { font-size: 14px; margin: 6px 0; color: var(--text); }
-.latest-line b { font-size: 16px; color: var(--primary); }
 sup.up { color: #16a34a; font-size: 11px; font-weight: 700; }
 sub.down { color: #dc2626; font-size: 11px; font-weight: 700; }

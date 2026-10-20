@@ -42,24 +42,20 @@
         <label class="field">物品名称
           <input id="r-name" type="text" list="item-suggestions" placeholder="如：洗发水" required>
         </label>
-        <label class="field">分类
-          <input id="r-cat" type="text" list="category-suggestions" placeholder="如：日用品">
-        </label>
-        <label class="field">使用天数
-          <input id="r-days" type="number" min="1" inputmode="numeric" placeholder="如 30">
-        </label>
         <label class="field">单价（元）
           <input id="r-price" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
         </label>
         <label class="field">数量（可带单位）
           <input id="r-qty" type="text" placeholder="如 2、3瓶">
         </label>
-        <label class="field full">总价（元）
+        <label class="field">使用天数
+          <input id="r-days" type="number" min="1" inputmode="numeric" placeholder="如 30">
+        </label>
+        <label class="field">总价（元）
           <input id="r-total" type="number" step="0.01" min="0" inputmode="decimal" placeholder="数量为纯数字时自动计算" required>
         </label>
       </div>
       <datalist id="item-suggestions"></datalist>
-      <datalist id="category-suggestions"></datalist>
       <button type="submit" class="btn primary">记入</button>
     </form>
 

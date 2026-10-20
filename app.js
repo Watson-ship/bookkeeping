@@ -65,18 +65,12 @@ function esc(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function catName(of) {
-  const c = (of == null ? '' : String(of)).trim();
-  return c || '未分类';
-}
-
 /* ---------------- 数据存取 ---------------- */
 function normalizeRecord(r) {
   return {
     id: r.id || uid(),
     date: r.date || todayStr(),
     name: String(r.name == null ? '' : r.name).trim(),
-    category: r.category ? String(r.category) : '',
     price: Number(r.price) || 0,
     quantity: r.quantity == null ? '' : String(r.quantity),
     total: Number(r.total != null ? r.total : r.amount) || 0,
@@ -92,7 +86,6 @@ function itemToRecord(it) {
     id: uid(),
     date: it.startDate || (it.createdAt ? toDateStr(new Date(it.createdAt)) : todayStr()),
     name: String(it.name).trim(),
-    category: it.category ? String(it.category) : '',
     price: Number(it.price) || 0,
     quantity: it.quantity == null ? '' : String(it.quantity),
     total: Number(it.totalAmount) || 0,
@@ -144,13 +137,8 @@ function buildItems() {
     for (let i = recs.length - 1; i >= 0; i -= 1) {
       if (recs[i].usageDays > 0) { withDays = recs[i]; break; }
     }
-    let lastCat = '';
-    for (let i = recs.length - 1; i >= 0; i -= 1) {
-      if (recs[i].category) { lastCat = recs[i].category; break; }
-    }
     items.push({
       name: name,
-      category: lastCat,
       price: last.price || 0,
       quantity: last.quantity || '',
       totalAmount: last.total || 0,
@@ -168,38 +156,6 @@ function findItem(name) {
   const n = String(name == null ? '' : name).trim();
   if (!n) return null;
   return buildItems().find((i) => i.name === n) || null;
-}
-
-function groupByCategory(items) {
-  const m = new Map();
-  items.forEach((it) => {
-    const c = catName(it.category);
-    if (!m.has(c)) m.set(c, []);
-    m.get(c).push(it);
-  });
-  const arr = Array.from(m.entries()).map(([category, list]) => ({ category: category, list: list }));
-  arr.sort((a, b) => {
-    if (a.category === '未分类') return 1;
-    if (b.category === '未分类') return -1;
-    return a.category.localeCompare(b.category, 'zh');
-  });
-  return arr;
-}
-
-/* 剩余使用天数（连续时间，进度随时间动态变化） */
-function remainingOf(it) {
-  if (!(it.usageDays > 0)) return null;
-  const start = it.startDate || toDateStr(new Date(it.createdAt));
-  const startMs = parseDate(start).getTime();
-  const elapsedDays = Math.max(0, (Date.now() - startMs) / 86400000);
-  const remainDays = it.usageDays - elapsedDays;
-  const pct = clamp((elapsedDays / it.usageDays) * 100, 0, 100);
-  const remainPct = 100 - pct;
-  let estQty = null;
-  if (isPureNumber(it.quantity)) {
-    estQty = parseFloat(it.quantity) * clamp(remainDays, 0, it.usageDays) / it.usageDays;
-  }
-  return { start: start, elapsedDays: elapsedDays, remainDays: remainDays, pct: pct, remainPct: remainPct, estQty: estQty };
 }
 
 /* ---------------- 提示条 ---------------- */
@@ -302,11 +258,10 @@ $('#r-qty').addEventListener('change', () => {
   else if (parseFloat($('#r-total').value) > 0) autoFromTotal();
 });
 
-/* 输入已有物品名时，自动带出分类/单价/使用天数（仅填空字段） */
+/* 输入已有物品名时，自动带出单价/使用天数（仅填空字段） */
 $('#r-name').addEventListener('change', () => {
   const it = findItem($('#r-name').value);
   if (!it) return;
-  if (!$('#r-cat').value.trim()) $('#r-cat').value = it.category || '';
   if (!$('#r-price').value) $('#r-price').value = it.price || '';
   if (!$('#r-days').value) $('#r-days').value = it.usageDays || '';
 });
@@ -315,7 +270,6 @@ $('#record-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const date = $('#r-date').value || todayStr();
   const name = $('#r-name').value.trim();
-  const category = $('#r-cat').value.trim();
   const price = parseFloat($('#r-price').value) || 0;
   const qty = $('#r-qty').value.trim();
   const days = parseInt($('#r-days').value, 10) || 0;
@@ -329,7 +283,7 @@ $('#record-form').addEventListener('submit', (e) => {
     }
   }
   db.records.push({
-    id: uid(), date: date, name: name, category: category, price: price,
+    id: uid(), date: date, name: name, price: price,
     quantity: qty, total: round2(total), usageDays: days, createdAt: Date.now()
   });
   save();
@@ -338,7 +292,6 @@ $('#record-form').addEventListener('submit', (e) => {
   $('#r-price').dataset.auto = '';
   $('#r-total').dataset.auto = '';
   refreshSuggestions();
-  refreshCategories();
   renderRecords();
   renderPrice();
   renderStock();
@@ -587,92 +540,84 @@ function renderPrice() {
 /* =====================================================
    页3：剩余使用天数（库存）
    ===================================================== */
-function stockCard(it) {
-  const ro = remainingOf(it);
-  if (!ro) {
-    return `
-    <div class="card stock-card">
-      <div class="item-head">
-        <div class="item-name">${esc(it.name)}</div>
-        <span class="badge muted-badge">未设置</span>
-      </div>
-      <div class="item-meta">数量 ${esc(it.quantity || '—')} · 总价 ${fmtMoney(it.totalAmount)} · 未设置使用天数</div>
-      <div class="item-actions"><button class="mini danger" data-del="${esc(it.name)}">删除</button></div>
-    </div>`;
-  }
-  const remainDays = Math.max(0, Math.ceil(ro.remainDays));
+/* 库存：按单条记账记录统计（同名不合并），只统计设置了使用天数且剩余 >= 1 天的 */
+function stockEntries() {
+  const now = Date.now();
+  return db.records
+    .filter((r) => r.usageDays > 0)
+    .map((r) => {
+      const startMs = parseDate(r.date).getTime();
+      const elapsedDays = Math.max(0, (now - startMs) / 86400000);
+      const remainDays = r.usageDays - elapsedDays;
+      const pct = clamp((elapsedDays / r.usageDays) * 100, 0, 100);
+      const remainPct = 100 - pct;
+      let estQty = null;
+      if (isPureNumber(r.quantity)) {
+        estQty = parseFloat(r.quantity) * clamp(remainDays, 0, r.usageDays) / r.usageDays;
+      }
+      return { rec: r, elapsedDays: elapsedDays, remainDays: remainDays, pct: pct, remainPct: remainPct, estQty: estQty };
+    })
+    .filter((e) => e.remainDays >= 1) /* 剩余不足 1 天自动移除 */
+    .sort((a, b) => a.remainDays - b.remainDays);
+}
+
+function stockCard(e) {
+  const r = e.rec;
+  const remainDays = Math.max(0, Math.ceil(e.remainDays));
   let status, cls;
-  if (ro.remainDays <= 0) { status = '已用完'; cls = 'badge danger'; }
-  else if (ro.remainDays <= 3) { status = '即将用完'; cls = 'badge warn'; }
-  else if (ro.pct >= 70) { status = '注意'; cls = 'badge warn'; }
+  if (e.remainDays <= 3) { status = '即将用完'; cls = 'badge warn'; }
+  else if (e.pct >= 70) { status = '注意'; cls = 'badge warn'; }
   else { status = '充足'; cls = 'badge ok'; }
-  const qtyInfo = ro.estQty != null
-    ? `预计剩余数量：${fmtQty(ro.estQty)} / ${esc(it.quantity)}`
-    : `数量：${esc(it.quantity || '—')}`;
+  const qtyInfo = e.estQty != null
+    ? `预计剩余数量：${fmtQty(e.estQty)} / ${esc(r.quantity)}`
+    : `数量：${esc(r.quantity || '—')}`;
   return `
   <div class="card stock-card">
     <div class="item-head">
-      <div class="item-name">${esc(it.name)}</div>
+      <div class="item-name">${esc(r.name)}</div>
       <span class="${cls}">${status}</span>
     </div>
-    <div class="stock-days">已用 ${Math.floor(ro.elapsedDays)} 天 / 共 ${it.usageDays} 天 · <b>剩余 ${remainDays} 天</b></div>
-    <div class="progress"><div class="bar" style="width:${ro.remainPct.toFixed(2)}%"></div></div>
-    <div class="item-meta">${qtyInfo} · 总价 ${fmtMoney(it.totalAmount)}${it.startDate ? ' · 开始 ' + it.startDate : ''}</div>
-    <div class="item-actions"><button class="mini danger" data-del="${esc(it.name)}">删除</button></div>
+    <div class="stock-days">已用 ${Math.floor(e.elapsedDays)} 天 / 共 ${r.usageDays} 天 · <b>剩余 ${remainDays} 天</b></div>
+    <div class="progress"><div class="bar" style="width:${e.remainPct.toFixed(2)}%"></div></div>
+    <div class="item-meta">${qtyInfo} · 总价 ${fmtMoney(r.total)} · 开始 ${r.date}</div>
+    <div class="item-actions"><button class="mini danger" data-del="${r.id}">删除</button></div>
   </div>`;
 }
 
-function deleteItem(name) {
-  const n = db.records.filter((r) => r.name === name).length;
-  openModal('删除物品', `确定删除「${esc(name)}」吗？<br><span class="muted" style="font-size:13px">将同时删除该物品的 ${n} 条记账记录</span>`, [
-    { label: '取消', cls: 'ghost', fn: closeModal },
-    { label: '删除', cls: 'danger', fn: () => {
-      db.records = db.records.filter((r) => r.name !== name);
-      save(); renderAll(); closeModal(); toast('已删除');
-    } }
-  ]);
-}
-
 function renderStock() {
-  const items = buildItems();
-  const totalValue = items.reduce((s, i) => s + i.totalAmount, 0);
-  const lowCount = items.filter((i) => {
-    const ro = remainingOf(i);
-    return ro && ro.remainDays <= 3;
-  }).length;
+  const entries = stockEntries();
+  const totalValue = entries.reduce((s, e) => s + e.rec.total, 0);
+  const lowCount = entries.filter((e) => e.remainDays <= 3).length;
 
   $('#stock-sum').innerHTML = `
-    <div class="tile"><div class="num">${items.length}</div><div class="lbl">物品数</div></div>
+    <div class="tile"><div class="num">${entries.length}</div><div class="lbl">物品数</div></div>
     <div class="tile"><div class="num">${fmtMoney(totalValue)}</div><div class="lbl">物资总值</div></div>
     <div class="tile"><div class="num">${lowCount}</div><div class="lbl">需补货</div></div>`;
 
   const box = $('#stock-list');
-  if (!items.length) {
-    box.innerHTML = '<div class="empty">还没有物品<br>在「记账」页记一笔并填写使用天数后，这里会自动显示剩余天数</div>';
+  if (!entries.length) {
+    box.innerHTML = '<div class="empty">还没有库存物品<br>记账时填写「使用天数」，剩余天数会自动显示在这里</div>';
     return;
   }
-  const groups = groupByCategory(items);
-  groups.forEach((g) => {
-    g.list.sort((a, b) => {
-      const ra = remainingOf(a);
-      const rb = remainingOf(b);
-      if (ra && rb) return ra.remainDays - rb.remainDays;
-      if (ra) return -1;
-      if (rb) return 1;
-      return 0;
-    });
-  });
-  box.innerHTML = groups.map((g) => `
-    <div class="cat-group">
-      <div class="cat-head">📁 ${esc(g.category)} <span class="cat-count">${g.list.length}</span></div>
-      ${g.list.map((it) => stockCard(it)).join('')}
-    </div>`).join('');
+  box.innerHTML = entries.map((e) => stockCard(e)).join('');
 }
 
 $('#stock-list').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-del]');
-  if (btn) deleteItem(btn.dataset.del);
+  if (btn) deleteRecord(btn.dataset.del);
 });
+
+/* 删除单条记账记录（库存卡片用） */
+function deleteRecord(id) {
+  const rec = db.records.find((r) => r.id === id);
+  openModal('删除记录', `确定删除「${esc(rec ? rec.name : '')}」这条记账记录吗？`, [
+    { label: '取消', cls: 'ghost', fn: closeModal },
+    { label: '删除', cls: 'danger', fn: () => {
+      db.records = db.records.filter((r) => r.id !== id);
+      save(); renderAll(); closeModal(); toast('已删除');
+    } }
+  ]);
+}
 
 /* 时间推进：剩余天数/进度条随时间动态变化 */
 function refreshTimeSensitive() {
@@ -691,14 +636,13 @@ function renderQuickChips() {
   const items = buildItems();
   if (!items.length) { wrap.classList.add('hidden'); box.innerHTML = ''; return; }
   wrap.classList.remove('hidden');
-  box.innerHTML = items.map((it) => `<button type="button" class="chip" data-name="${esc(it.name)}" data-cat="${esc(it.category)}" data-price="${it.price}" data-days="${it.usageDays || ''}">${esc(it.name)}</button>`).join('');
+  box.innerHTML = items.map((it) => `<button type="button" class="chip" data-name="${esc(it.name)}" data-price="${it.price}" data-days="${it.usageDays || ''}">${esc(it.name)}</button>`).join('');
 }
 
 $('#rec-chips').addEventListener('click', (e) => {
   const chip = e.target.closest('.chip');
   if (!chip) return;
   $('#r-name').value = chip.dataset.name;
-  $('#r-cat').value = chip.dataset.cat || '';
   $('#r-price').value = parseFloat(chip.dataset.price) > 0 ? chip.dataset.price : '';
   $('#r-days').value = chip.dataset.days || '';
   $('#r-total').focus();
@@ -710,15 +654,6 @@ function refreshSuggestions() {
   $('#item-suggestions').innerHTML = Array.from(names)
     .map((n) => `<option value="${esc(n)}"></option>`).join('');
   renderQuickChips();
-}
-
-function refreshCategories() {
-  const set = new Set();
-  db.records.forEach((r) => {
-    if (r.category && String(r.category).trim()) set.add(String(r.category).trim());
-  });
-  $('#category-suggestions').innerHTML = Array.from(set)
-    .map((c) => `<option value="${esc(c)}"></option>`).join('');
 }
 
 /* =====================================================
@@ -854,7 +789,6 @@ function clearAll() {
 
 function renderAll() {
   refreshSuggestions();
-  refreshCategories();
   renderRecords();
   renderPrice();
   renderStock();
@@ -865,7 +799,6 @@ function init() {
   $('#r-date').value = todayStr();
   $$('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.page)));
   switchTab('records');
-  refreshCategories();
   installBannerState();
   if (migrated) save();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
